@@ -76,7 +76,9 @@ impl<VM:VMBinding> ProcessEdgesWork for MyGCProcessEdges<VM> {
             ..Default::default()
         }
     }
-    // if the object is non-null, logs its reference to the trace 
+    // if the object is non-null, logs its reference to the trace
+    // and regardless, returns the reference to the object.
+    // Implementing stuff from src/scheduler/gc_works.rs
     #[inline]
     fn trace_object(&mut self, object: ObjectReference) -> ObjectReference {
         if object.is_null() {
@@ -85,6 +87,7 @@ impl<VM:VMBinding> ProcessEdgesWork for MyGCProcessEdges<VM> {
         }
         if self.plan().tospace().in_space(object) {
             // if the object is in the tospace, use tospace's trace
+            // and return the result
             self.plan().tospace().trace_object(
                 self,
                 object,
@@ -93,6 +96,7 @@ impl<VM:VMBinding> ProcessEdgesWork for MyGCProcessEdges<VM> {
             )
         } else if self.plan().fromspace().in_space(object) {
             // if the object is in the fromspace, use fromspace's trace
+            // and return the result
             self.plan().fromspace().trace_object(
                 self,
                 object,
@@ -100,7 +104,8 @@ impl<VM:VMBinding> ProcessEdgesWork for MyGCProcessEdges<VM> {
                 self.worker().local(),
             )
         } else {
-            //if it's in neither space, use common's trace
+            // if it's in neither space, use common's trace
+            // and return the result
             self.plan().common.trace_object(self, object)
         }
     }
