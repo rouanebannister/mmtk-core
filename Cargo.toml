@@ -42,6 +42,7 @@ rand = "0.7.3"
 default = []
 
 # plans
+tutetest = ["immortalspace", "largeobjectspace"]
 nogc = ["immortalspace", "largeobjectspace"]
 mygc = ["immortalspace", "largeobjectspace", "copyspace"]
 semispace = ["immortalspace", "largeobjectspace", "copyspace"]
