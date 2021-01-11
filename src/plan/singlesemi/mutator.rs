@@ -1,7 +1,7 @@
 use crate::plan::barriers::NoBarrier;
 use crate::plan::mutator_context::Mutator;
 use crate::plan::mutator_context::MutatorConfig;
-use crate::plan::nogc::NoGC;
+use crate::plan::singlesemi::SingleSemi;
 use crate::plan::AllocationSemantics as AllocationType;
 use crate::util::alloc::allocators::{AllocatorSelector, Allocators};
 use crate::util::OpaquePointer;
@@ -15,19 +15,19 @@ lazy_static! {
     };
 }
 
-pub fn nogc_mutator_noop<VM: VMBinding>(_mutator: &mut Mutator<NoGC<VM>>, _tls: OpaquePointer) {
+pub fn singlesemi_mutator_noop<VM: VMBinding>(_mutator: &mut Mutator<SingleSemi<VM>>, _tls: OpaquePointer) {
     unreachable!();
 }
 
-pub fn create_nogc_mutator<VM: VMBinding>(
+pub fn create_singlesemi_mutator<VM: VMBinding>(
     mutator_tls: OpaquePointer,
-    plan: &'static NoGC<VM>,
-) -> Mutator<NoGC<VM>> {
+    plan: &'static SingleSemi<VM>,
+) -> Mutator<SingleSemi<VM>> {
     let config = MutatorConfig {
         allocator_mapping: &*ALLOCATOR_MAPPING,
-        space_mapping: box vec![(AllocatorSelector::BumpPointer(0), &plan.nogc_space)],
-        prepare_func: &nogc_mutator_noop,
-        release_func: &nogc_mutator_noop,
+        space_mapping: box vec![(AllocatorSelector::BumpPointer(0), &plan.singlesemi_space)],
+        prepare_func: &singlesemi_mutator_noop,
+        release_func: &singlesemi_mutator_noop,
     };
 
     Mutator {

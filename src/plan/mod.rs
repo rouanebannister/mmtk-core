@@ -34,10 +34,10 @@ pub mod gencopy;
 #[cfg(feature = "gencopy")]
 pub use self::gencopy as selected_plan;
 
-#[cfg(feature = "tutetest")]
-pub mod tutetest;
-#[cfg(feature = "tutetest")]
-pub use self::tutetest as selected_plan;
+#[cfg(feature = "triplespace")]
+pub mod triplespace;
+#[cfg(feature = "triplespace")]
+pub use self::triplespace as selected_plan;
 
 pub use self::selected_plan::SelectedConstraints;
 pub use self::selected_plan::SelectedPlan;

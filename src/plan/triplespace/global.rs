@@ -1,12 +1,12 @@
 // nDC = noGC didn't collect
-use super::gc_works::{MyGCCopyContext, MyGCProcessEdges}; //add. Reason: contexts for copying
+use super::gc_works::{TripleSpaceCopyContext, TripleSpaceProcessEdges}; //add. Reason: contexts for copying
 use crate::mmtk::MMTK;
 use crate::plan::global::BasePlan; //change. Reason: used to include NoCopy, not needed here
 use crate::plan::global::CommonPlan; //add. Reason: uses common plan functions
 use crate::plan::global::GcStatus; //add. Reason: to keep track of whether or not garbage is being collected. nDC
 use crate::plan::mutator_context::Mutator;
-use crate::plan::mygc::mutator::create_mygc_mutator;
-use crate::plan::mygc::mutator::ALLOCATOR_MAPPING;
+use crate::plan::triplespace::mutator::create_triplespace_mutator;
+use crate::plan::triplespace::mutator::ALLOCATOR_MAPPING;
 use crate::plan::AllocationSemantics;
 use crate::plan::Plan;
 use crate::policy::copyspace::CopySpace; //add. Reason: uses copyspaces
@@ -30,26 +30,27 @@ use enum_map::EnumMap;
 //remove ln15 (allow unused imports). Reason: No unused imports
 // remove ln23-6 lock free lines. Reason: Not relevant
 
-pub type SelectedPlan<VM> = MyGC<VM>;
+pub type SelectedPlan<VM> = TripleSpace<VM>;
 
-pub const ALLOC_MyGC: AllocationSemantics = AllocationSemantics::Default; //add. Reason: ?
+pub const ALLOC_TripleSpace: AllocationSemantics = AllocationSemantics::Default; //add. Reason: ?
 
-pub struct MyGC<VM: VMBinding> {
+pub struct TripleSpace<VM: VMBinding> {
     //change - whole thing here is changed
     // Reason: It's a different GC needing different things. NoGC doesn't need a bool or multiple spaces.
     pub hi: AtomicBool, // indicating which space is to/from
     pub copyspace0: CopySpace<VM>,
     pub copyspace1: CopySpace<VM>,
+    pub youngspace: CopySpace<VM>,
     // 2x copyspaces. Tospace, fromspace, currently not specified
     pub common: CommonPlan<VM>, 
 }
 
-unsafe impl<VM: VMBinding> Sync for MyGC<VM> {}
+unsafe impl<VM: VMBinding> Sync for TripleSpace<VM> {}
 
-impl<VM: VMBinding> Plan for MyGC<VM> {
+impl<VM: VMBinding> Plan for TripleSpace<VM> {
     type VM = VM;
     type Mutator = Mutator<Self>;
-    type CopyContext = MyGCCopyContext<VM>; //change. Reason: Old was NoCopy
+    type CopyContext = TripleSpaceCopyContext<VM>; //change. Reason: Old was NoCopy
 
     fn new(
         vm_map: &'static VMMap,
@@ -60,7 +61,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
         //change - again, completely changed.
         let mut heap = HeapMeta::new(HEAP_START, HEAP_END);
 
-        MyGC {
+        TripleSpace {
             hi: AtomicBool::new(false),
             copyspace0: CopySpace::new(
                 "copyspace0",
@@ -80,6 +81,15 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
                 mmapper,
                 &mut heap,
             ),
+            youngspace: CopySpace::new(
+                "youngspace",
+                true,
+                false, //init as a tospace
+                VMRequest::discontiguous(),
+                vm_map,
+                mmapper,
+                &mut heap,
+            ),
             common: CommonPlan::new(vm_map, mmapper, options, heap),
         }
     }
@@ -94,6 +104,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
         self.common.gc_init(heap_size, vm_map, scheduler);
         self.copyspace0.init(&vm_map);
         self.copyspace1.init(&vm_map);
+        self.youngspace.init(&vm_map);
     }
 
     //change. Reason: calls unreachable in nogc
@@ -102,7 +113,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
         self.base().set_gc_status(GcStatus::GcPrepare);
         //stop. scan mutators
         scheduler.unconstrained_works
-            .add(StopMutators::<MyGCProcessEdges<VM>>::new());
+            .add(StopMutators::<TripleSpaceProcessEdges<VM>>::new());
         // prep global/coll/mut
         scheduler.prepare_stage.add(Prepare::new(self));
         // release global/coll/mut
@@ -118,7 +129,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
         tls: OpaquePointer,
         _mmtk: &'static MMTK<Self::VM>,
     ) -> Box<Mutator<Self>> {
-        Box::new(create_mygc_mutator(tls, self))
+        Box::new(create_triplespace_mutator(tls, self))
     }
 
     fn get_allocator_mapping(&self) -> &'static EnumMap<AllocationSemantics, AllocatorSelector> {
@@ -134,9 +145,12 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
             .store(!self.hi.load(Ordering::SeqCst), Ordering::SeqCst);
         // Flips 'hi' to flip space definitions
         let hi = self.hi.load(Ordering::SeqCst); 
+
         self.copyspace0.prepare(hi); // Prep spaces w new definition
                                      // of which one is to and from
         self.copyspace1.prepare(!hi);
+
+        self.youngspace.prepare(true);
     }
 
     fn release(&self, tls: OpaquePointer) {
@@ -145,6 +159,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
         //left in fromspace
         self.common.release(tls, true);
         self.fromspace().release();
+        self.youngspace().release();
     }
 
     //these ones are just making referencing easier.
@@ -171,7 +186,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
 
 //alloc
 //add. Reason: adds references to to/from spaces, not used in nogc
-impl<VM: VMBinding> MyGC<VM> {
+impl<VM: VMBinding> TripleSpace<VM> {
     pub fn tospace(&self) -> &CopySpace<VM> {
         // if hi then tospace == 1
         // else tospace == 0
@@ -189,6 +204,10 @@ impl<VM: VMBinding> MyGC<VM> {
         } else {
             &self.copyspace1
         }
+    }
+
+    pub fn youngspace(&self) -> &CopySpace<VM> {
+        &self.youngspace
     }
 }
 

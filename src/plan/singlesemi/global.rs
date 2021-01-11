@@ -1,8 +1,8 @@
 use crate::mmtk::MMTK;
 use crate::plan::global::{BasePlan, NoCopy};
 use crate::plan::mutator_context::Mutator;
-use crate::plan::nogc::mutator::create_nogc_mutator;
-use crate::plan::nogc::mutator::ALLOCATOR_MAPPING;
+use crate::plan::singlesemi::mutator::create_singlesemi_mutator;
+use crate::plan::singlesemi::mutator::ALLOCATOR_MAPPING;
 use crate::plan::AllocationSemantics;
 use crate::plan::Plan;
 use crate::policy::space::Space;
@@ -20,21 +20,18 @@ use crate::vm::VMBinding;
 use enum_map::EnumMap;
 use std::sync::Arc;
 
-#[cfg(not(feature = "nogc_lock_free"))]
-use crate::policy::immortalspace::ImmortalSpace as NoGCImmortalSpace;
-#[cfg(feature = "nogc_lock_free")]
-use crate::policy::lockfreeimmortalspace::LockFreeImmortalSpace as NoGCImmortalSpace;
+use crate::policy::immortalspace::ImmortalSpace as SingleSemiImmortalSpace;
 
-pub type SelectedPlan<VM> = NoGC<VM>;
+pub type SelectedPlan<VM> = SingleSemi<VM>;
 
-pub struct NoGC<VM: VMBinding> {
+pub struct SingleSemi<VM: VMBinding> {
     pub base: BasePlan<VM>,
-    pub nogc_space: NoGCImmortalSpace<VM>,
+    pub singlesemi_space: SingleSemiImmortalSpace<VM>,
 }
 
-unsafe impl<VM: VMBinding> Sync for NoGC<VM> {}
+unsafe impl<VM: VMBinding> Sync for SingleSemi<VM> {}
 
-impl<VM: VMBinding> Plan for NoGC<VM> {
+impl<VM: VMBinding> Plan for SingleSemi<VM> {
     type VM = VM;
     type Mutator = Mutator<Self>;
     type CopyContext = NoCopy<VM>;
@@ -45,17 +42,10 @@ impl<VM: VMBinding> Plan for NoGC<VM> {
         options: Arc<UnsafeOptionsWrapper>,
         _scheduler: &'static MMTkScheduler<Self::VM>,
     ) -> Self {
-        #[cfg(not(feature = "nogc_lock_free"))]
         let mut heap = HeapMeta::new(HEAP_START, HEAP_END);
-        #[cfg(feature = "nogc_lock_free")]
-        let heap = HeapMeta::new(HEAP_START, HEAP_END);
 
-        #[cfg(feature = "nogc_lock_free")]
-        let nogc_space =
-            NoGCImmortalSpace::new("nogc_space", cfg!(not(feature = "nogc_no_zeroing")));
-        #[cfg(not(feature = "nogc_lock_free"))]
-        let nogc_space = NoGCImmortalSpace::new(
-            "nogc_space",
+        let singlesemi_space = SingleSemiImmortalSpace::new(
+            "singlesemi_space",
             true,
             VMRequest::discontiguous(),
             vm_map,
@@ -63,8 +53,8 @@ impl<VM: VMBinding> Plan for NoGC<VM> {
             &mut heap,
         );
 
-        NoGC {
-            nogc_space,
+        SingleSemi {
+            singlesemi_space,
             base: BasePlan::new(vm_map, mmapper, options, heap),
         }
     }
@@ -78,7 +68,7 @@ impl<VM: VMBinding> Plan for NoGC<VM> {
         self.base.gc_init(heap_size, vm_map, scheduler);
 
         // FIXME correctly initialize spaces based on options
-        self.nogc_space.init(&vm_map);
+        self.singlesemi_space.init(&vm_map);
     }
 
     fn base(&self) -> &BasePlan<VM> {
@@ -90,7 +80,7 @@ impl<VM: VMBinding> Plan for NoGC<VM> {
         tls: OpaquePointer,
         _mmtk: &'static MMTK<Self::VM>,
     ) -> Box<Mutator<Self>> {
-        Box::new(create_nogc_mutator(tls, self))
+        Box::new(create_singlesemi_mutator(tls, self))
     }
 
     fn prepare(&self, _tls: OpaquePointer) {
@@ -106,14 +96,14 @@ impl<VM: VMBinding> Plan for NoGC<VM> {
     }
 
     fn schedule_collection(&'static self, _scheduler: &MMTkScheduler<VM>) {
-        unreachable!("GC triggered in nogc")
+        unreachable!("GC triggered in singlesemi")
     }
 
     fn get_pages_used(&self) -> usize {
-        self.nogc_space.reserved_pages()
+        self.singlesemi_space.reserved_pages()
     }
 
     fn handle_user_collection_request(&self, _tls: OpaquePointer, _force: bool) {
-        println!("Warning: User attempted a collection request, but it is not supported in NoGC. The request is ignored.");
+        println!("Warning: User attempted a collection request, but it is not supported in SingleSemi. The request is ignored.");
     }
 }

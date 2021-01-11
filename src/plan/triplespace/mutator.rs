@@ -1,4 +1,4 @@
-use super::MyGC; //add
+use super::TripleSpace; //add
 use crate::plan::barriers::NoBarrier;
 use crate::plan::mutator_context::Mutator;
 use crate::plan::mutator_context::MutatorConfig;
@@ -13,14 +13,14 @@ use enum_map::EnumMap;
 //remove nogc_mutator_noop
 
 //add
-pub fn mygc_mutator_prepare<VM: VMBinding>(
-    _mutator: &mut Mutator <MyGC<VM>>,
+pub fn triplespace_mutator_prepare<VM: VMBinding>(
+    _mutator: &mut Mutator <TripleSpace<VM>>,
     _tls: OpaquePointer,
 ) { }
 
 //add
-pub fn mygc_mutator_release<VM: VMBinding> (
-    mutator: &mut Mutator<MyGC<VM>>,
+pub fn triplespace_mutator_release<VM: VMBinding> (
+    mutator: &mut Mutator<TripleSpace<VM>>,
     _tls: OpaquePointer
 ) {
     let bump_allocator = unsafe {
@@ -32,7 +32,7 @@ pub fn mygc_mutator_release<VM: VMBinding> (
         }
         .downcast_mut::<BumpAllocator<VM>>()
         .unwrap();
-        bump_allocator.rebind(Some(mutator.plan.tospace()));
+        bump_allocator.rebind(Some(mutator.plan.youngspace()));
 }
 
 
@@ -45,16 +45,16 @@ lazy_static! {
     };
 }
 
-pub fn create_mygc_mutator<VM: VMBinding>(
+pub fn create_triplespace_mutator<VM: VMBinding>(
     mutator_tls: OpaquePointer,
-    plan: &'static MyGC<VM>,
-) -> Mutator<MyGC<VM>> {
+    plan: &'static TripleSpace<VM>,
+) -> Mutator<TripleSpace<VM>> {
     let config = MutatorConfig {
         allocator_mapping: &*ALLOCATOR_MAPPING,
         //maps out memory for the two spaces??
         //change - different mapping bc of multiple spaces
         space_mapping: box vec![
-            (AllocatorSelector::BumpPointer(0), plan.tospace()),
+            (AllocatorSelector::BumpPointer(0), plan.youngspace()),
             (
                 AllocatorSelector::BumpPointer(1),
                 plan.common.get_immortal(),
@@ -62,8 +62,8 @@ pub fn create_mygc_mutator<VM: VMBinding>(
             (AllocatorSelector::LargeObject(0), plan.common.get_los()),
         ],
         //change from both being noop   
-        prepare_func: &mygc_mutator_prepare,
-        release_func: &mygc_mutator_release,
+        prepare_func: &triplespace_mutator_prepare,
+        release_func: &triplespace_mutator_release,
     };
 
     Mutator {
