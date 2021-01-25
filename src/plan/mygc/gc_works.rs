@@ -21,7 +21,6 @@ pub struct MyGCCopyContext<VM: VMBinding> {
 impl<VM: VMBinding> CopyContext for MyGCCopyContext<VM> {
     type VM = VM;
     fn new(mmtk: &'static MMTK<Self::VM>) -> Self {
-        //ALLOC
         Self {
             plan: &mmtk.plan,
             mygc: BumpAllocator::new(OpaquePointer::UNINITIALIZED, None, &mmtk.plan),
@@ -111,7 +110,7 @@ impl<VM:VMBinding> ProcessEdgesWork for MyGCProcessEdges<VM> {
     }
 }
 
-// Returns a reference to the data within MyGCProcessEdges
+// Returns a reference to the base within MyGCProcessEdges
 impl<VM: VMBinding> Deref for MyGCProcessEdges<VM> {
     type Target = ProcessEdgesBase<Self>;
     #[inline]

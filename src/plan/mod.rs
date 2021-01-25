@@ -39,5 +39,10 @@ pub mod triplespace;
 #[cfg(feature = "triplespace")]
 pub use self::triplespace as selected_plan;
 
+#[cfg(feature = "withmut")]
+pub mod withmut;
+#[cfg(feature = "withmut")]
+pub use self::withmut as selected_plan;
+
 pub use self::selected_plan::SelectedConstraints;
 pub use self::selected_plan::SelectedPlan;

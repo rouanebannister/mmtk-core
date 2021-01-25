@@ -43,6 +43,7 @@ default = []
 
 # plans
 triplespace = ["immortalspace", "largeobjectspace", "copyspace"]
+withmut = ["immortalspace", "largeobjectspace", "copyspace"]
 nogc = ["immortalspace", "largeobjectspace"]
 mygc = ["immortalspace", "largeobjectspace", "copyspace"]
 semispace = ["immortalspace", "largeobjectspace", "copyspace"]

@@ -153,7 +153,7 @@ impl<VM: VMBinding> Plan for MyGC<VM> {
         self.tospace().reserved_pages()
     }
  
-    //add. Reason: ? 
+    //change. Reason: refer to correct space
     fn get_pages_used(&self) -> usize {
         self.tospace().reserved_pages() + self.common.get_pages_used()
     }
