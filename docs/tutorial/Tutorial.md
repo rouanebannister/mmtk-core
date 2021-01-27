@@ -534,6 +534,14 @@ This collector fixes one of the major problems with Semispace - namely, that any
 4. in Mutator initialiser: Change allocator, add barrier, add dereferenced mmtk.plan to plan field
 
 
+General steps:
+1. Add nursery (use triplespace result? Is this too repetative?)
+   1. Define field
+   2. Initialise
+   3. Set up with mutator
+2. Schedule collections properly
+3. Add barrier
+
 **Idea: Add 2nd older generation exercise**
 
 
