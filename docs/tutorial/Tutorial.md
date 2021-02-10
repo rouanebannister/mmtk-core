@@ -474,44 +474,54 @@ Of course, this means that the Triplespace is incredibly inefficient for a gener
 ### What is a generational collector?
 The *weak generational hypothesis* states that most of the objects allocated to a heap after one collection will die before the next collection. Therefore, it is worth separating out 'young' and 'old' objects and only scanning each as needed, to minimise the number of times old live objects are scanned. New objects are allocated to a 'nursery', and after one collection they move to the 'mature' space. In `triplespace`, `youngspace` is a proto-nursery, and the tospace and fromspace are the mature space.
 
-This collector fixes one of the major problems with Semispace - namely, that any long-lived objects are repeatedly copied back and forth. By separating these objects into a separate 'mature' space, the number of full heap collections needed is greatly reduced.
+This collector fixes one of the major problems with Semispace - namely, that any long-lived objects are repeatedly copied back and forth. By separating these objects into a separate 'mature' space, the number of full heap collections needed is greatly reduced. The process for adding the nursery space in this collector is also easily applicable to most other collectors - the generational collector structure is largely plan-agnostic, and will usually work no matter what plan is used to collect the mature space.
 
-**Notes: all diffs btn semispace and gencopy**
+### Preliminaries
 
-`constraints.rs`: no changes
+This collector is going to build off the semispace collector you built earlier. Similarly to the semispace section, we will go through the collector as if i
 
-Add nursery
-* `global.rs`: mod `use crate::vm::VMBinding;` -> `use crate::vm::*;` (not sure of correct position)
-* `global.rs`: To GenCopy definition: add nursery, in_nursery, scheduler
-* `global.rs`: To Plan for GenCopy: add definitions for newly added fields to initialiser
-* `global.rs`: To Plan for GenCopy: `gc_init`: init nursery
-* `global.rs`: To Plan for GenCopy: add `in_nursery` helper function
+As mentioned above, triplespace is a sort of generational collector. However, because you may have written your version of triplespace differently to others, we are going to go back to working from MyGC. If you do keep working using triplespace, be aware that these instructions will likely need modification. 
+
+If you would like to create a copy of MyGC to preserve your current implementation, have a look back at [Create MyGC](#create-mygc) for instructions on setting up a new plan. You should name it something along the lines of `MyGenCopy`.
+
+Since this new collector is effectively going to be a wrapping around MyGC, making a few name changes will make the structure a lot clearer.
+1. Find and replace any instances of `MyGC` with `MyGenCopy`. Make sure you have case sensitivity enabled if you do this through a find-and-replace function in your editor.
+2. *Optionally*, find and replace any instances of `mygc` with `ss` or `semispace`.
+
+Also, we don't need to change any of the plan constraints for this collector, so leave `constraints.rs` as-is.
+
+### Add a nursery
+
+Firstly, add a nursery space. This will be very similar to how you added `youngspace` in triplespace.
 * `global.rs`: add `pub const NURSERY_SIZE: usize = 16 * 1024 * 1024;`
+* `global.rs`: To MyGenCopy definition: add nursery, in_nursery, scheduler
+* `global.rs`: To Plan for MyGenCopy: add definitions for newly added fields to initialiser
+* `global.rs`: To Plan for MyGenCopy: `gc_init`: init nursery
+* `global.rs`: To Plan for MyGenCopy: add `in_nursery` helper function
 
-Set up with mutator
+We now need to modify the mutator to allocate to the nursery, rather than the tospace. 
 * `mutator.rs`: Space mapping: BumpPointer(0) maps to nursery rather than tospace
 * `mutator.rs`: in Mutator initialiser: Change allocator
 
-Add barrier
+At this point, you should add a write barrier. For this collector, we will use a `FieldRememberingBarrier`. 
 * `mutator.rs`: add `use super::gc_works::*;`
 * `mutator.rs`: add `use crate::policy::copyspace::CopySpace;`
 * `mutator.rs`: add `use crate::MMTK;`
-* `mutator.rs`: mod `use crate::plan::barriers::NoBarrier;` -> `use crate::plan::barriers::*;`
+* `mutator.rs`: mod `use crate::plan::barriers::NoBarrier;` -> `use crate::plan::barriers::FieldRememberingBarrier;`
 * `mutator.rs`: in Mutator initialiser: add dereferenced mmtk.plan to plan field
-* `mutator.rs`: in Mutator initialiser: add barrier
+* `mutator.rs`: in Mutator initialiser: add `FieldRememberingBarrier`
 
 Scheduling and CopyContext
-* `global.rs`: mod `use super::gc_works::{SSCopyContext, SSProcessEdges};` -> `use super::gc_works::{GenCopyCopyContext, GenCopyMatureProcessEdges, GenCopyNurseryProcessEdges};`
+
+* `gc_works.rs`: add nursery-specific CopyContext
+* `gc_works.rs`: Old CopyContext becomes mature-space specific. 
+
+* `global.rs`: mod `use super::gc_works::{MyGenCopyCopyContext, MyGenCopyProcessEdges};` -> `use super::gc_works::{MyGenCopyCopyContext, MyGenCopyMatureProcessEdges, MyGenCopyNurseryProcessEdges};`
 * `global.rs`: To Plan for GenCopy: `get_collection_reserve` and `get_pages_used` add nursery to count (requires `LOG_BYTES_IN_PAGE`)
 * `global.rs`: add `use crate::util::constants::LOG_BYTES_IN_PAGE;`
 * `global.rs`: To Plan for GenCopy: add `collection_required`: returns true if if space is full, nursery is full, or heap is full
 * `global.rs`: To Plan for GenCopy: add nursery check to `schedule_collection`
 * `global.rs`: to `impl<VM: VMBinding> GenCopy<VM>` add `request_full_heap_collection`
-
-* `gc_works.rs`: mod `use crate::vm::VMBinding;` -> `use crate::vm::*;` (not sure of correct position)
-* `gc_works.rs`: add nursery-specific CopyContext
-* `gc_works.rs`: Old CopyContext becomes mature-space specific. 
-
 
 Prepare
 * `global.rs`: To Plan for GenCopy: add nursery check to `prepare`
