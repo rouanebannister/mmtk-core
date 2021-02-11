@@ -503,6 +503,9 @@ We now need to modify the mutator to allocate to the nursery, rather than the to
 * `mutator.rs`: Space mapping: BumpPointer(0) maps to nursery rather than tospace
 * `mutator.rs`: in Mutator initialiser: Change allocator
 
+
+### Add a barrier
+
 At this point, you should add a write barrier. For this collector, we will use a `FieldRememberingBarrier`. 
 * `mutator.rs`: add `use super::gc_works::*;`
 * `mutator.rs`: add `use crate::policy::copyspace::CopySpace;`
@@ -511,21 +514,24 @@ At this point, you should add a write barrier. For this collector, we will use a
 * `mutator.rs`: in Mutator initialiser: add dereferenced mmtk.plan to plan field
 * `mutator.rs`: in Mutator initialiser: add `FieldRememberingBarrier`
 
-Scheduling and CopyContext
 
-* `gc_works.rs`: add nursery-specific CopyContext
-* `gc_works.rs`: Old CopyContext becomes mature-space specific. 
+### Scheduling and CopyContext
 
+Copycontext
+* `gc_works.rs`: mod `plan` field to `plan: unsafe { &*(&mmtk.plan as *const _ as *const GenCopy<VM>) },`
+
+Schedule collection
 * `global.rs`: mod `use super::gc_works::{MyGenCopyCopyContext, MyGenCopyProcessEdges};` -> `use super::gc_works::{MyGenCopyCopyContext, MyGenCopyMatureProcessEdges, MyGenCopyNurseryProcessEdges};`
 * `global.rs`: To Plan for GenCopy: `get_collection_reserve` and `get_pages_used` add nursery to count (requires `LOG_BYTES_IN_PAGE`)
 * `global.rs`: add `use crate::util::constants::LOG_BYTES_IN_PAGE;`
 * `global.rs`: To Plan for GenCopy: add `collection_required`: returns true if if space is full, nursery is full, or heap is full
-* `global.rs`: To Plan for GenCopy: add nursery check to `schedule_collection`
+* `global.rs`: To Plan for GenCopy: add nursery check to `schedule_collection` - Requires ProcessEdges changes
 * `global.rs`: to `impl<VM: VMBinding> GenCopy<VM>` add `request_full_heap_collection`
+
+### Collection - Prepare, Collect, Release
 
 Prepare
 * `global.rs`: To Plan for GenCopy: add nursery check to `prepare`
-
 
 Collect
 * `gc_works.rs`: add `use crate::scheduler::{GCWork, GCWorker};`
